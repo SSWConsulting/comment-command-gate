@@ -24,6 +24,26 @@ fill() {
   printf '%s' "$s"
 }
 
+# GET an API path and print the --jq result. Return 4 if GitHub answers
+# 404. For any other error, log it and return 1.
+api_get() {
+  local out err rc=0
+  err=$(mktemp)
+  out=$(gh api "$1" --jq "$2" 2>"$err") || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    printf '%s\n' "$out"
+    return 0
+  fi
+  if grep -q 'HTTP 404' "$err"; then
+    rm -f "$err"
+    return 4
+  fi
+  echo "::error::GitHub API call to $1 failed: $(cat "$err")" >&2
+  rm -f "$err"
+  return 1
+}
+
 comment() {
   gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -f body="$1" --silent
 }
@@ -69,7 +89,13 @@ fi
 role_filter='.user.permissions // {} |
   if .admin then "admin" elif .maintain then "maintain" elif .push then "write"
   elif .triage then "triage" elif .pull then "read" else "none" end'
-permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq "$role_filter" 2>/dev/null || echo none)
+rc=0
+permission=$(api_get "repos/$REPO/collaborators/$COMMENTER/permission" "$role_filter") || rc=$?
+case "$rc" in
+  0) ;;
+  4) permission=none ;;
+  *) exit 1 ;;
+esac
 echo "permission=$permission" >> "$GITHUB_OUTPUT"
 if [ "$(rank "$permission")" -lt "$(rank "$MIN_ROLE")" ]; then
   comment "$(fill "$DENY_MESSAGE")"
@@ -80,14 +106,18 @@ echo "✅ $COMMENTER has '$permission' permission."
 
 # 3. Optional: the comment must be on an open PR, from a branch in this repo
 if [ "$REQUIRE_PR" = "true" ] || [ "$REQUIRE_SAME_REPO" = "true" ]; then
-  if ! gh api "repos/$REPO/pulls/$ISSUE_NUMBER" >/dev/null 2>&1; then
-    echo "::error::$COMMAND only runs on pull requests - #$ISSUE_NUMBER is not one."
-    exit 1
-  fi
-  IFS=$'\t' read -r state head_ref head_sha head_repo < <(
-    gh api "repos/$REPO/pulls/$ISSUE_NUMBER" \
-      --jq '[.state, .head.ref, .head.sha, (.head.repo.full_name // "")] | @tsv'
-  )
+  rc=0
+  pr=$(api_get "repos/$REPO/pulls/$ISSUE_NUMBER" \
+    '[.state, .head.ref, .head.sha, (.head.repo.full_name // "")] | @tsv') || rc=$?
+  case "$rc" in
+    0) ;;
+    4)
+      echo "::error::$COMMAND only runs on pull requests - #$ISSUE_NUMBER is not one."
+      exit 1
+      ;;
+    *) exit 1 ;;
+  esac
+  IFS=$'\t' read -r state head_ref head_sha head_repo <<< "$pr"
   if [ "$state" != "open" ]; then
     echo "::error::PR #$ISSUE_NUMBER is not open (state: $state) - $COMMAND can't run."
     exit 1

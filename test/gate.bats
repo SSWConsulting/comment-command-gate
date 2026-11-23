@@ -175,10 +175,19 @@ not_called() {
   [ "$status" -eq 0 ]
 }
 
-@test "refuses when the permission lookup fails" {
-  GH_STUB_PERMISSION_STATUS=404 run "$GATE"
+@test "treats a 404 from the permission lookup as no role" {
+  GH_STUB_PERMISSION_STATUS=404 GH_STUB_PERMISSION_BODY='{"message":"Not Found"}' run "$GATE"
   [ "$status" -eq 1 ]
+  [ "$(output_value permission)" = none ]
+  called "repos/acme/site/issues/42/comments"
   not_called reactions
+}
+
+@test "fails with the API error, and posts no deny message, when the permission lookup errors" {
+  GH_STUB_PERMISSION_STATUS=500 run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"GitHub API call to repos/acme/site/collaborators/octocat/permission failed"* ]]
+  not_called "issues/42/comments"
 }
 
 @test "skips the PR checks by default" {
@@ -192,6 +201,19 @@ not_called() {
   GH_STUB_PULL_STATUS=404 REQUIRE_PR=true run "$GATE"
   [ "$status" -eq 1 ]
   [[ "$output" == *"only runs on pull requests"* ]]
+}
+
+@test "require_pull_request fails with the API error when the PR lookup errors" {
+  GH_STUB_PULL_STATUS=502 REQUIRE_PR=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"GitHub API call to repos/acme/site/pulls/42 failed"* ]]
+  [[ "$output" != *"only runs on pull requests"* ]]
+}
+
+@test "require_pull_request reads the PR once" {
+  REQUIRE_PR=true run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c 'pulls/42' "$GH_LOG")" -eq 1 ]
 }
 
 @test "require_pull_request refuses a closed PR" {
