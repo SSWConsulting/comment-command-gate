@@ -1,12 +1,14 @@
-# PR deploy gate
+# Comment command gate
 
-A composite GitHub Action that gates a `/deploy` comment on a pull request:
+A composite GitHub Action that decides whether a slash command typed in an issue or PR comment, such as `/deploy`, may run.
 
-- the commenter has write access to the repo;
-- the PR is open;
-- the PR's head branch is in the same repo. Fork PRs, and PRs whose fork was deleted, are refused.
+It checks, cheapest first, and stops at the first failure:
 
-A refused command gets a comment saying why and fails the job, so jobs that `need` it are skipped. An accepted command gets a 🚀 reaction.
+1. the comment starts with the command;
+2. the commenter has at least `min_role` in the repo (default `write`);
+3. optional, for PR-only commands: the PR is open, and its head branch is in this repo (refuses forks and deleted forks).
+
+It exits `0` if the command may run and `1` if not. A refusal posts a comment saying why. An allowed command gets a reaction (`+1` by default).
 
 It only calls the GitHub API, so a caller does not need `actions/checkout`.
 
@@ -18,7 +20,7 @@ on:
     types: [created]
 
 jobs:
-  validate:
+  gate:
     if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/deploy')
     runs-on: ubuntu-latest
     permissions:
@@ -29,42 +31,70 @@ jobs:
       head_sha: ${{ steps.gate.outputs.head_sha }}
     steps:
       - id: gate
-        uses: SSWConsulting/pr-deploy-gate@v1.0.0
+        uses: SSWConsulting/comment-command-gate@v2.0.0
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
-          pr_number: ${{ github.event.issue.number }}
-          commenter: ${{ github.event.comment.user.login }}
+          issue_number: ${{ github.event.issue.number }}
           comment_id: ${{ github.event.comment.id }}
+          comment_body: ${{ github.event.comment.body }}
+          commenter: ${{ github.event.comment.user.login }}
+          command: /deploy
+          min_role: write
+          require_same_repo_branch: "true"
 
   deploy:
-    needs: validate
+    needs: gate
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Deploying ${{ needs.validate.outputs.head_sha }}"
+      - run: echo "Deploying ${{ needs.gate.outputs.head_sha }}"
+```
+
+A command that only needs a role, and works on issues too, leaves out the PR options:
+
+```yaml
+- id: gate
+  uses: SSWConsulting/comment-command-gate@v2.0.0
+  with:
+    token: ${{ github.token }}
+    repository: ${{ github.repository }}
+    issue_number: ${{ github.event.issue.number }}
+    comment_id: ${{ github.event.comment.id }}
+    comment_body: ${{ github.event.comment.body }}
+    commenter: ${{ github.event.comment.user.login }}
+    command: /label
+    min_role: triage
 ```
 
 ## Inputs
 
-| Input | Required | Description |
-| --- | --- | --- |
-| `token` | yes | Token for `gh`, usually `github.token`. Needs `issues` and `pull-requests` write. |
-| `repository` | yes | `github.repository` |
-| `pr_number` | yes | `github.event.issue.number` |
-| `commenter` | yes | `github.event.comment.user.login` |
-| `comment_id` | yes | `github.event.comment.id` |
-| `refuse_message` | no | Comment posted on a refusal. `{reason}` and `{commenter}` are replaced. |
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `token` | yes | | Token for `gh`, usually `github.token`. Needs `issues: write`, and `pull-requests: write` if the PR checks run. |
+| `repository` | yes | | `github.repository` |
+| `issue_number` | yes | | `github.event.issue.number` |
+| `comment_id` | yes | | `github.event.comment.id` |
+| `comment_body` | yes | | `github.event.comment.body` |
+| `commenter` | yes | | `github.event.comment.user.login` |
+| `command` | yes | | The text the comment must start with, e.g. `/deploy` |
+| `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read` |
+| `require_pull_request` | no | `false` | `"true"` to refuse unless the comment is on an open PR |
+| `require_same_repo_branch` | no | `false` | `"true"` to refuse PRs whose head branch is not in this repo. Implies `require_pull_request`. |
+| `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. |
+| `refuse_message` | no | see `action.yml` | Comment on a PR refusal. `{commenter}`, `{command}`, `{reason}` are replaced. |
+| `reaction` | no | `+1` | Reaction for an allowed command. Empty to skip. |
 
 ## Outputs
 
 | Output | Description |
 | --- | --- |
-| `head_ref` | The PR's head branch |
-| `head_sha` | The PR's head commit SHA |
-| `head_repository` | The head repo's full name. Empty if the fork was deleted. |
+| `permission` | The commenter's role in the repo |
+| `head_ref` | The PR's head branch. Empty unless the PR checks ran. |
+| `head_sha` | The PR's head commit SHA. Empty unless the PR checks ran. |
+| `head_repository` | The PR's head repo. Empty if the PR checks did not run or the fork was deleted. |
 
 ## Versioning
 
-Callers pin to a release tag (`@v1.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
+Callers pin to a release tag (`@v2.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
 
-Releases are tags of the form `vX.Y.Z`. Patch and minor releases only add behaviour that existing callers can ignore; a breaking change to inputs or outputs gets a new major version.
+Releases are tags of the form `vX.Y.Z`. A change to inputs or outputs that breaks existing callers gets a new major version. `v1.0.0` was the first release and was specific to `/deploy`; `v2.0.0` replaced it with the generic action above.
