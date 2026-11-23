@@ -7,7 +7,7 @@ description: Mitigates GitHub Actions "pwn request" attacks on issue_comment sla
 
 inputs:
   token:
-    description: Token for gh, usually github.token. Needs issues write, and pull-requests write if the PR checks run.
+    description: Token for gh, usually github.token. Needs issues write, and pull-requests read if the PR checks run.
     required: true
   repository:
     description: The repo the comment is in, usually github.repository
@@ -28,7 +28,7 @@ inputs:
     description: The command the comment must start with, e.g. /deploy
     required: true
   min_role:
-    description: The lowest repo role allowed to run the command. One of admin, maintain, write, triage, read.
+    description: The lowest repo role allowed to run the command. One of admin, maintain, write, triage, read. On a public repo, every GitHub user has read.
     required: false
     default: write
   require_pull_request:

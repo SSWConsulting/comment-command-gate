@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: write
+      pull-requests: read
     outputs:
       head_ref: ${{ steps.gate.outputs.head_ref }}
       head_sha: ${{ steps.gate.outputs.head_sha }}
@@ -90,14 +90,14 @@ A command that only needs a role, and works on issues too, turns the PR check of
 
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
-| `token` | yes | | Token for `gh`, usually `github.token`. Needs `issues: write`, and `pull-requests: write` if the PR checks run. |
+| `token` | yes | | Token for `gh`, usually `github.token`. Needs `issues: write`, and `pull-requests: read` if the PR checks run. |
 | `repository` | yes | | `github.repository` |
 | `issue_number` | yes | | `github.event.issue.number` |
 | `comment_id` | yes | | `github.event.comment.id` |
 | `comment_body` | yes | | `github.event.comment.body` |
 | `commenter` | yes | | `github.event.comment.user.login` |
 | `command` | yes | | The text the comment must start with, e.g. `/deploy` |
-| `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read` |
+| `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read`. On a public repo, every GitHub user has `read`. |
 | `require_pull_request` | no | `false` | `"true"` to refuse unless the comment is on an open PR |
 | `require_same_repo_branch` | no | `true` | `"true"` to refuse PRs whose head branch is not in this repo. Implies `require_pull_request`. Set to `"false"` for a command that also runs on issues. |
 | `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. Empty to post nothing. |
