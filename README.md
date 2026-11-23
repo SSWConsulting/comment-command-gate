@@ -1,5 +1,23 @@
 # Comment command gate
 
+Stops "pwn requests" in GitHub Actions: a `/deploy` (or any `/command`) comment on a pull request from a fork running that PR's code with your repo's secrets.
+
+## The problem
+
+A workflow triggered by `issue_comment` runs in the base repository, with its secrets and a write-scoped token, even when the comment is on a PR from a fork. If the workflow then checks out or builds the PR's code, anyone who can open a PR can run code with your secrets. The only thing standing in the way is the command itself: a maintainer who types `/deploy` on a fork PR, or a fork that pushes new code after the command, makes the attack work. This is the "pwn request" pattern, and GitHub documents it:
+
+- [Securely using pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target) (GitHub Docs)
+- [Keeping your GitHub Actions and workflows secure: Preventing pwn requests](https://securitylab.github.com/research/github-actions-preventing-pwn-requests/) (GitHub Security Lab)
+- [The Pwn Request Reckoning](https://www.wiz.io/blog/github-actions-security-pwn-request-reckoning) (Wiz, third-party)
+
+## The mitigation
+
+The gate is a job that runs before any build or deploy job. It checks, in order, that the comment starts with the command, that the commenter has at least the required repo role, and (for PR commands) that the PR is open and its head branch is in this repo. Any failure exits `1`, so jobs that `need` the gate never run, and the PR's code is never built with your secrets.
+
+Pin the caller to a release tag or commit SHA, and build the PR's head SHA, not the mutable `refs/pull/N/merge`.
+
+## What it does
+
 A composite GitHub Action that decides whether a slash command typed in an issue or PR comment, such as `/deploy`, may run.
 
 It checks, cheapest first, and stops at the first failure:

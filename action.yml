@@ -1,5 +1,5 @@
 name: Comment command gate
-description: Gate a slash command typed in an issue or PR comment, such as /deploy. Checks in order and stops at the first failure - the comment starts with the command, the commenter has at least the required repo role, and (optionally) the comment is on an open PR from a branch in this repo. Exits 0 if the command may run, 1 if not. A refusal posts a comment saying why.
+description: Mitigates GitHub Actions "pwn request" attacks on issue_comment slash commands such as /deploy. Stops a fork PR's code from running with repo secrets. Checks in order and stops at the first failure - the comment starts with the command, the commenter has at least the required repo role, and (optionally) the PR is open and its head branch is in this repo. Exits 0 if the command may run, 1 if not.
 
 # The checks run cheapest first, so most refusals cost no API calls.
 # Call it from a job triggered by issue_comment (created), and filter the
