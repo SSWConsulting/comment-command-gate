@@ -39,8 +39,14 @@ if [[ "$COMMENT_BODY" != "$COMMAND"* ]]; then
   exit 1
 fi
 
-# 2. The commenter must have at least the required role
-permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || echo none)
+# 2. The commenter must have at least the required role.
+# Read the role from user.permissions. The top-level "permission" field
+# reports maintain as write and triage as read. A custom role sets the
+# flags of its base role.
+role_filter='.user.permissions // {} |
+  if .admin then "admin" elif .maintain then "maintain" elif .push then "write"
+  elif .triage then "triage" elif .pull then "read" else "none" end'
+permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq "$role_filter" 2>/dev/null || echo none)
 echo "permission=$permission" >> "$GITHUB_OUTPUT"
 if [ "$(rank "$permission")" -lt "$(rank "$MIN_ROLE")" ]; then
   comment "$(fill "$DENY_MESSAGE")"

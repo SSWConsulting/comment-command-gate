@@ -97,6 +97,33 @@ not_called() {
   not_called reactions
 }
 
+@test "allows a maintainer when min_role is maintain" {
+  has_role maintain
+  MIN_ROLE=maintain run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(output_value permission)" = maintain ]
+}
+
+@test "allows a triager when min_role is triage" {
+  has_role triage
+  MIN_ROLE=triage run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(output_value permission)" = triage ]
+}
+
+@test "refuses a triager when min_role is write" {
+  has_role triage
+  run "$GATE"
+  [ "$status" -eq 1 ]
+}
+
+@test "ranks a custom role by the flags of its base role" {
+  has_role maintain
+  GH_STUB_PERMISSION_BODY=${GH_STUB_PERMISSION_BODY/'"role_name":"maintain"'/'"role_name":"release-manager"'}
+  MIN_ROLE=maintain run "$GATE"
+  [ "$status" -eq 0 ]
+}
+
 @test "allows an admin when min_role is write" {
   has_role admin
   run "$GATE"
