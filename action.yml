@@ -1,0 +1,107 @@
+name: PR deploy gate
+description: Gate a /deploy comment on a pull request. Checks that the commenter has write access, that the PR is open, and that its head branch is in the same repo (not a fork, and not a deleted fork). Refusals post a comment and fail the job. Accepted commands get a rocket reaction.
+
+# Why the fork check matters: a fork's code would build and deploy with the
+# caller's cloud login and secrets, and a fork can push new code after the command.
+#
+# Call it from a job triggered by issue_comment (created), with the /deploy
+# check done in that job's `if:`. See README.md for an example.
+
+inputs:
+  token:
+    description: Token for gh, usually github.token. It needs pull-requests and issues write.
+    required: true
+  repository:
+    description: The repo the PR is in, usually github.repository
+    required: true
+  pr_number:
+    description: The PR number, usually github.event.issue.number
+    required: true
+  commenter:
+    description: The login of whoever typed the command, usually github.event.comment.user.login
+    required: true
+  comment_id:
+    description: The comment to react to, usually github.event.comment.id
+    required: true
+  refuse_message:
+    description: Comment posted when the PR is refused because it is a fork or its fork was deleted. {reason} is replaced with why, and {commenter} with the commenter's login.
+    required: false
+    default: "🛑 Sorry @{commenter} - this PR can't be deployed because {reason}. Push the branch to this repo and open a new PR from it."
+
+outputs:
+  head_ref:
+    description: The PR's head branch name
+    value: ${{ steps.gate.outputs.head_ref }}
+  head_sha:
+    description: The PR's head commit SHA
+    value: ${{ steps.gate.outputs.head_sha }}
+  head_repository:
+    description: The full name of the PR's head repo. Empty if the fork was deleted.
+    value: ${{ steps.gate.outputs.head_repository }}
+
+runs:
+  using: composite
+  steps:
+    - name: Gate /deploy
+      id: gate
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repository }}
+        PR_NUMBER: ${{ inputs.pr_number }}
+        COMMENTER: ${{ inputs.commenter }}
+        COMMENT_ID: ${{ inputs.comment_id }}
+        REFUSE_MESSAGE: ${{ inputs.refuse_message }}
+      run: |
+        set -euo pipefail
+
+        comment() {
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" -f body="$1" --silent
+        }
+
+        # 1. The commenter must be able to write to the repo
+        permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || echo none)
+        case "$permission" in
+          admin|maintain|write)
+            echo "✅ $COMMENTER has '$permission' permission." ;;
+          *)
+            comment "🛑 Sorry @$COMMENTER - write access to this repo is required to deploy."
+            echo "::error::$COMMENTER has '$permission' permission - write access is required to deploy."
+            exit 1 ;;
+        esac
+
+        # 2. The PR must be open. A deleted fork has no head repo, so its name is empty.
+        IFS=$'\t' read -r state head_ref head_sha head_repo < <(
+          gh api "repos/$REPO/pulls/$PR_NUMBER" \
+            --jq '[.state, .head.ref, .head.sha, (.head.repo.full_name // "")] | @tsv'
+        )
+        if [ "$state" != "open" ]; then
+          echo "::error::PR #$PR_NUMBER is not open (state: $state) - nothing to deploy."
+          exit 1
+        fi
+
+        # 3. The head branch must be in this repo
+        if [ "$head_repo" != "$REPO" ]; then
+          if [ -z "$head_repo" ]; then
+            reason="its fork was deleted"
+          else
+            reason="it comes from the fork $head_repo"
+          fi
+          message=${REFUSE_MESSAGE//'{reason}'/$reason}
+          message=${message//'{commenter}'/$COMMENTER}
+          comment "$message"
+          echo "::error::Not deployed: $reason. Only PRs from branches in $REPO are deployed."
+          exit 1
+        fi
+
+        {
+          echo "head_ref=$head_ref"
+          echo "head_sha=$head_sha"
+          echo "head_repository=$head_repo"
+        } >> "$GITHUB_OUTPUT"
+
+        # Acknowledge only. A missing reaction scope must not stop the command.
+        gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=rocket --silent \
+          || echo "::warning::Could not add the rocket reaction to the command."
+
+        echo "✅ Deploying PR #$PR_NUMBER (branch $head_ref @ $head_sha)"
