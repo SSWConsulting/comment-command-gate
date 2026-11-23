@@ -28,6 +28,27 @@ comment() {
   gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -f body="$1" --silent
 }
 
+# Composite actions do not enforce required inputs, and an empty command
+# matches every comment.
+if [ -z "$COMMAND" ]; then
+  echo "::error::command is required."
+  exit 1
+fi
+
+# A value other than true or false must not turn a check off.
+bool() {
+  case "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" in
+    true) echo true ;;
+    false) echo false ;;
+    *)
+      echo "::error::$1 must be true or false - got '$2'." >&2
+      return 1
+      ;;
+  esac
+}
+REQUIRE_PR=$(bool require_pull_request "$REQUIRE_PR")
+REQUIRE_SAME_REPO=$(bool require_same_repo_branch "$REQUIRE_SAME_REPO")
+
 if [ "$(rank "$MIN_ROLE")" -eq 0 ]; then
   echo "::error::min_role must be one of admin, maintain, write, triage, read - got '$MIN_ROLE'."
   exit 1

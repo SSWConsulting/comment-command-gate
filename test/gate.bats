@@ -83,6 +83,36 @@ not_called() {
   [ ! -s "$GH_LOG" ]
 }
 
+@test "rejects an empty command" {
+  COMMAND='' run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"command is required"* ]]
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "rejects a require_same_repo_branch value that is not true or false" {
+  open_pr_from someone/site
+  for value in yes 1 on ''; do
+    REQUIRE_SAME_REPO=$value run "$GATE"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"require_same_repo_branch must be true or false"* ]]
+  done
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "rejects a require_pull_request value that is not true or false" {
+  REQUIRE_PR=yes run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"require_pull_request must be true or false"* ]]
+}
+
+@test "accepts True as true" {
+  open_pr_from someone/site
+  REQUIRE_SAME_REPO=True run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"it comes from the fork someone/site"* ]]
+}
+
 @test "rejects an unknown min_role" {
   MIN_ROLE=owner run "$GATE"
   [ "$status" -eq 1 ]
