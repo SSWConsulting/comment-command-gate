@@ -40,11 +40,11 @@ inputs:
     required: false
     default: "false"
   deny_message:
-    description: Comment posted when the commenter's role is too low. {commenter}, {command} and {role} are replaced.
+    description: Comment posted when the commenter's role is too low. {commenter}, {command} and {role} are replaced. Empty to post nothing.
     required: false
     default: "🛑 Sorry @{commenter} - `{command}` needs {role} access to this repo."
   refuse_message:
-    description: Comment posted when the PR is refused. {commenter}, {command} and {reason} are replaced.
+    description: Comment posted when the PR is refused. {commenter}, {command} and {reason} are replaced. Empty to post nothing.
     required: false
     default: "🛑 Sorry @{commenter} - `{command}` can't run on this PR because {reason}."
   reaction:

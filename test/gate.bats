@@ -169,6 +169,35 @@ not_called() {
   [ "$status" -eq 0 ]
 }
 
+@test "an empty deny_message posts no comment" {
+  has_role read
+  DENY_MESSAGE='' run "$GATE"
+  [ "$status" -eq 1 ]
+  not_called "issues/42/comments"
+}
+
+@test "an empty refuse_message posts no comment" {
+  open_pr_from someone/site
+  REFUSE_MESSAGE='' REQUIRE_SAME_REPO=true run "$GATE"
+  [ "$status" -eq 1 ]
+  not_called "issues/42/comments"
+}
+
+@test "a failed deny comment still logs why the command was refused" {
+  has_role read
+  GH_STUB_COMMENT_STATUS=403 run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Could not post the refusal comment"* ]]
+  [[ "$output" == *"octocat has 'read' permission - /deploy needs write"* ]]
+}
+
+@test "a failed refuse comment still logs why the command was refused" {
+  open_pr_from someone/site
+  GH_STUB_COMMENT_STATUS=403 REQUIRE_SAME_REPO=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"/deploy refused: it comes from the fork someone/site"* ]]
+}
+
 @test "allows an admin when min_role is write" {
   has_role admin
   run "$GATE"

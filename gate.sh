@@ -44,8 +44,12 @@ api_get() {
   return 1
 }
 
+# Post a reply on the issue or PR. An empty message posts nothing. A failed
+# post must not hide the reason for the refusal, so it only warns.
 comment() {
-  gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -f body="$1" --silent
+  [ -n "$1" ] || return 0
+  gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -f body="$1" --silent \
+    || echo "::warning::Could not post the refusal comment."
 }
 
 # Composite actions do not enforce required inputs, and an empty command

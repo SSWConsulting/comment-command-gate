@@ -26,7 +26,7 @@ It checks, cheapest first, and stops at the first failure:
 2. the commenter has at least `min_role` in the repo (default `write`);
 3. optional, for PR-only commands: the PR is open, and its head branch is in this repo (refuses forks and deleted forks).
 
-It exits `0` if the command may run and `1` if not. A refusal posts a comment saying why. An allowed command gets a reaction (`+1` by default).
+It exits `0` if the command may run and `1` if not. A refusal posts a comment saying why, unless that message is set to empty. An allowed command gets a reaction (`+1` by default).
 
 It only calls the GitHub API, so a caller does not need `actions/checkout`.
 
@@ -100,8 +100,8 @@ A command that only needs a role, and works on issues too, leaves out the PR opt
 | `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read` |
 | `require_pull_request` | no | `false` | `"true"` to refuse unless the comment is on an open PR |
 | `require_same_repo_branch` | no | `false` | `"true"` to refuse PRs whose head branch is not in this repo. Implies `require_pull_request`. |
-| `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. |
-| `refuse_message` | no | see `action.yml` | Comment on a PR refusal. `{commenter}`, `{command}`, `{reason}` are replaced. |
+| `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. Empty to post nothing. |
+| `refuse_message` | no | see `action.yml` | Comment on a PR refusal. `{commenter}`, `{command}`, `{reason}` are replaced. Empty to post nothing. |
 | `reaction` | no | `+1` | Reaction for an allowed command. Empty to skip. |
 
 ## Outputs
