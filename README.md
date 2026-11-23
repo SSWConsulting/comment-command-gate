@@ -29,7 +29,7 @@ jobs:
       head_sha: ${{ steps.gate.outputs.head_sha }}
     steps:
       - id: gate
-        uses: SSWConsulting/pr-deploy-gate@main
+        uses: SSWConsulting/pr-deploy-gate@v1.0.0
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -65,4 +65,6 @@ jobs:
 
 ## Versioning
 
-Pin callers to a tag such as `@v1`, or to a full commit SHA. The action runs with each caller's token, so a change on `main` reaches every caller on its next run. Tags are not created yet: until the first release, use `@main` and treat it as unstable.
+Callers pin to a release tag (`@v1.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
+
+Releases are tags of the form `vX.Y.Z`. Patch and minor releases only add behaviour that existing callers can ignore; a breaking change to inputs or outputs gets a new major version.
