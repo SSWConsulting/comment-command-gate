@@ -300,3 +300,8 @@ not_called() {
   REQUIRE_SAME_REPO=true run "$GATE"
   called "body=refused @octocat /deploy: it comes from the fork someone/site"
 }
+
+@test "action.yml turns the fork check on by default" {
+  run awk '/^  require_same_repo_branch:/ { found = 1 } found && /default:/ { print $2; exit }' "$BATS_TEST_DIRNAME/../action.yml"
+  [ "$output" = '"true"' ]
+}

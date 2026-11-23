@@ -110,7 +110,7 @@ if [ "$(rank "$permission")" -lt "$(rank "$MIN_ROLE")" ]; then
 fi
 echo "✅ $COMMENTER has '$permission' permission."
 
-# 3. Optional: the comment must be on an open PR, from a branch in this repo
+# 3. On by default: the comment must be on an open PR, from a branch in this repo.
 if [ "$REQUIRE_PR" = "true" ] || [ "$REQUIRE_SAME_REPO" = "true" ]; then
   rc=0
   pr=$(api_get "repos/$REPO/pulls/$ISSUE_NUMBER" \
