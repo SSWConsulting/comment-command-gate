@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: shellcheck
+        run: |
+          shellcheck gate.sh test/bin/gh
+          shellcheck -s bash test/gate.bats
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+      - name: bats
+        run: bats test/
+
+  # Runs action.yml itself, which the bats tests do not cover. It posts
+  # nothing: min_role is read and the reaction is empty.
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: gate
+        uses: ./
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          issue_number: ${{ github.event.pull_request.number }}
+          comment_id: "0"
+          comment_body: /smoke
+          commenter: ${{ github.actor }}
+          command: /smoke
+          min_role: read
+          require_pull_request: "true"
+          require_same_repo_branch: "false"
+          reaction: ""
+      - name: Check the outputs
+        env:
+          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+          PERMISSION: ${{ steps.gate.outputs.permission }}
+        run: |
+          echo "permission=$PERMISSION head_sha=$HEAD_SHA"
+          [ -n "$PERMISSION" ]
+          [ "$HEAD_SHA" = "$EXPECTED_SHA" ]
