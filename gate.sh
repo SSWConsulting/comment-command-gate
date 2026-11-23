@@ -54,9 +54,11 @@ if [ "$(rank "$MIN_ROLE")" -eq 0 ]; then
   exit 1
 fi
 
-# 1. The comment must start with the command. No API call needed.
-if [[ "$COMMENT_BODY" != "$COMMAND"* ]]; then
-  echo "::error::The comment does not start with $COMMAND."
+# 1. The comment must start with the command, followed by whitespace or
+# the end of the comment, so /deploy does not match /deploy-prod.
+# No API call needed.
+if [[ "$COMMENT_BODY" != "$COMMAND" && "$COMMENT_BODY" != "$COMMAND"[[:space:]]* ]]; then
+  echo "::error::The comment does not start with the command $COMMAND."
   exit 1
 fi
 

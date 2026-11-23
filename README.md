@@ -22,7 +22,7 @@ A composite GitHub Action that decides whether a slash command typed in an issue
 
 It checks, cheapest first, and stops at the first failure:
 
-1. the comment starts with the command;
+1. the comment starts with the command as a whole word, so `/deploy` does not match `/deploy-prod`;
 2. the commenter has at least `min_role` in the repo (default `write`);
 3. optional, for PR-only commands: the PR is open, and its head branch is in this repo (refuses forks and deleted forks).
 
@@ -67,6 +67,8 @@ jobs:
     steps:
       - run: echo "Deploying ${{ needs.gate.outputs.head_sha }}"
 ```
+
+The job's `if:` uses `startsWith` so that other comments do not start a runner. It also matches `/deploy-prod`, so the gate checks the whole word.
 
 A command that only needs a role, and works on issues too, leaves out the PR options:
 

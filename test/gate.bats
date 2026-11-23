@@ -83,6 +83,21 @@ not_called() {
   [ ! -s "$GH_LOG" ]
 }
 
+@test "allows the command followed by arguments or a new line" {
+  for body in '/deploy now' $'/deploy\nthanks' $'/deploy\r\n' $'/deploy\tstaging'; do
+    COMMENT_BODY=$body run "$GATE"
+    [ "$status" -eq 0 ]
+  done
+}
+
+@test "refuses a longer command that starts with the command" {
+  for body in /deploy-prod /deployment '/deploy-prod now'; do
+    COMMENT_BODY=$body run "$GATE"
+    [ "$status" -eq 1 ]
+  done
+  [ ! -s "$GH_LOG" ]
+}
+
 @test "rejects an empty command" {
   COMMAND='' run "$GATE"
   [ "$status" -eq 1 ]
