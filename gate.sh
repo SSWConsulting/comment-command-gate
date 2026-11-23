@@ -17,10 +17,12 @@ rank() {
 # Fill the {placeholders} in a message. $1 is the template, $2 the reason.
 fill() {
   local s=$1
-  s=${s//'{commenter}'/$COMMENTER}
-  s=${s//'{command}'/$COMMAND}
-  s=${s//'{role}'/$MIN_ROLE}
-  s=${s//'{reason}'/${2:-}}
+  local reason=${2:-}
+  # Quote each replacement. Unquoted, bash 5.2 and later replace & with the matched text.
+  s=${s//'{commenter}'/"$COMMENTER"}
+  s=${s//'{command}'/"$COMMAND"}
+  s=${s//'{role}'/"$MIN_ROLE"}
+  s=${s//'{reason}'/"$reason"}
   printf '%s' "$s"
 }
 

@@ -289,6 +289,12 @@ not_called() {
   called "body=denied @octocat /deploy write"
 }
 
+@test "keeps an & in a placeholder value" {
+  has_role read
+  COMMAND='/a&b' COMMENT_BODY='/a&b' run "$GATE"
+  called "body=denied @octocat /a&b write"
+}
+
 @test "fills the placeholders in the refuse message" {
   open_pr_from someone/site
   REQUIRE_SAME_REPO=true run "$GATE"
