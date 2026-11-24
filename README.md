@@ -129,4 +129,4 @@ shellcheck gate.sh test/bin/gh
 shellcheck -s bash test/gate.bats
 ```
 
-CI runs these checks and `actionlint` on every pull request. A smoke job also runs `action.yml` against the pull request, in read-only mode.
+CI runs these checks and `actionlint` on every pull request. A smoke job also runs `action.yml` against pull requests from branches in this repo, in read-only mode. It skips PRs from bots, which have no repo role.

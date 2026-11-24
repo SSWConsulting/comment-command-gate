@@ -30,9 +30,13 @@ jobs:
         run: bats test/
 
   # Runs action.yml itself, which the bats tests do not cover. It posts
-  # nothing: min_role is read and the reaction is empty.
+  # nothing: the token cannot write, and the messages and reaction are empty.
+  # Bots have no repo role, so the gate refuses them. Skip bot and fork PRs.
   smoke:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !endsWith(github.actor, '[bot]')
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -52,6 +56,8 @@ jobs:
           min_role: read
           require_pull_request: "true"
           require_same_repo_branch: "false"
+          deny_message: ""
+          refuse_message: ""
           reaction: ""
       - name: Check the outputs
         env:
