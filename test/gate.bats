@@ -1,0 +1,173 @@
+#!/usr/bin/env bats
+
+setup() {
+  GATE="$BATS_TEST_DIRNAME/../gate.sh"
+  PATH="$BATS_TEST_DIRNAME/bin:$PATH"
+  export GH_LOG="$BATS_TEST_TMPDIR/gh.log"
+  export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/output"
+  : > "$GH_LOG"
+  : > "$GITHUB_OUTPUT"
+
+  export REPO=acme/site
+  export ISSUE_NUMBER=42
+  export COMMENT_ID=1001
+  export COMMENT_BODY=/deploy
+  export COMMENTER=octocat
+  export COMMAND=/deploy
+  export MIN_ROLE=write
+  export REQUIRE_PR=false
+  export REQUIRE_SAME_REPO=false
+  export DENY_MESSAGE='denied @{commenter} {command} {role}'
+  export REFUSE_MESSAGE='refused @{commenter} {command}: {reason}'
+  export REACTION=+1
+
+  has_role write
+  open_pr_from acme/site
+}
+
+# Sets the permission API response to what GitHub returns for a base role.
+has_role() {
+  local permission=$1 admin=false maintain=false push=false triage=false pull=false
+  case "$1" in
+    admin) admin=true maintain=true push=true triage=true pull=true ;;
+    maintain) permission=write maintain=true push=true triage=true pull=true ;;
+    write) push=true triage=true pull=true ;;
+    triage) permission=read triage=true pull=true ;;
+    read) pull=true ;;
+    none) ;;
+  esac
+  export GH_STUB_PERMISSION_BODY="{\"permission\":\"$permission\",\"role_name\":\"$1\",\"user\":{\"login\":\"$COMMENTER\",\"permissions\":{\"admin\":$admin,\"maintain\":$maintain,\"push\":$push,\"triage\":$triage,\"pull\":$pull}}}"
+}
+
+# Sets the pull request API response. An empty repo means the fork was deleted.
+open_pr_from() {
+  local repo=${1:-} state=${2:-open} head_repo=null
+  [ -n "$repo" ] && head_repo="{\"full_name\":\"$repo\"}"
+  export GH_STUB_PULL_BODY="{\"state\":\"$state\",\"head\":{\"ref\":\"feature\",\"sha\":\"abc123\",\"repo\":$head_repo}}"
+}
+
+output_value() {
+  sed -n "s/^$1=//p" "$GITHUB_OUTPUT"
+}
+
+called() {
+  grep -q -- "$1" "$GH_LOG"
+}
+
+not_called() {
+  ! grep -q -- "$1" "$GH_LOG"
+}
+
+@test "allows a writer and adds a reaction" {
+  run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(output_value permission)" = write ]
+  called "repos/acme/site/issues/comments/1001/reactions"
+}
+
+@test "skips the reaction when reaction is empty" {
+  REACTION='' run "$GATE"
+  [ "$status" -eq 0 ]
+  not_called reactions
+}
+
+@test "a failed reaction does not stop the command" {
+  GH_STUB_REACTION_STATUS=403 run "$GATE"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Could not add the reaction"* ]]
+}
+
+@test "refuses a comment that does not start with the command, with no API call" {
+  COMMENT_BODY='please /deploy' run "$GATE"
+  [ "$status" -eq 1 ]
+  [ ! -s "$GH_LOG" ]
+}
+
+@test "rejects an unknown min_role" {
+  MIN_ROLE=owner run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"min_role must be one of"* ]]
+}
+
+@test "refuses a commenter below min_role and posts the deny message" {
+  has_role read
+  run "$GATE"
+  [ "$status" -eq 1 ]
+  called "repos/acme/site/issues/42/comments"
+  not_called reactions
+}
+
+@test "allows an admin when min_role is write" {
+  has_role admin
+  run "$GATE"
+  [ "$status" -eq 0 ]
+}
+
+@test "refuses when the permission lookup fails" {
+  GH_STUB_PERMISSION_STATUS=404 run "$GATE"
+  [ "$status" -eq 1 ]
+  not_called reactions
+}
+
+@test "skips the PR checks by default" {
+  run "$GATE"
+  [ "$status" -eq 0 ]
+  not_called pulls
+  [ -z "$(output_value head_sha)" ]
+}
+
+@test "require_pull_request refuses an issue" {
+  GH_STUB_PULL_STATUS=404 REQUIRE_PR=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"only runs on pull requests"* ]]
+}
+
+@test "require_pull_request refuses a closed PR" {
+  open_pr_from acme/site closed
+  REQUIRE_PR=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is not open"* ]]
+}
+
+@test "require_pull_request allows a fork PR" {
+  open_pr_from someone/site
+  REQUIRE_PR=true run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(output_value head_repository)" = someone/site ]
+}
+
+@test "require_same_repo_branch allows a branch in this repo and sets the outputs" {
+  REQUIRE_SAME_REPO=true run "$GATE"
+  [ "$status" -eq 0 ]
+  [ "$(output_value head_ref)" = feature ]
+  [ "$(output_value head_sha)" = abc123 ]
+  [ "$(output_value head_repository)" = acme/site ]
+}
+
+@test "require_same_repo_branch refuses a fork PR and says why" {
+  open_pr_from someone/site
+  REQUIRE_SAME_REPO=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"it comes from the fork someone/site"* ]]
+  called "repos/acme/site/issues/42/comments"
+  [ -z "$(output_value head_sha)" ]
+}
+
+@test "require_same_repo_branch refuses a PR whose fork was deleted" {
+  open_pr_from ''
+  REQUIRE_SAME_REPO=true run "$GATE"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"its fork was deleted"* ]]
+}
+
+@test "fills the placeholders in the deny message" {
+  has_role read
+  run "$GATE"
+  called "body=denied @octocat /deploy write"
+}
+
+@test "fills the placeholders in the refuse message" {
+  open_pr_from someone/site
+  REQUIRE_SAME_REPO=true run "$GATE"
+  called "body=refused @octocat /deploy: it comes from the fork someone/site"
+}

@@ -116,3 +116,17 @@ A command that only needs a role, and works on issues too, leaves out the PR opt
 Callers pin to a release tag (`@v2.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
 
 Releases are tags of the form `vX.Y.Z`. A change to inputs or outputs that breaks existing callers gets a new major version. `v1.0.0` was the first release and was specific to `/deploy`; `v2.0.0` replaced it with the generic action above.
+
+## Development
+
+The gate logic is in `gate.sh`. `action.yml` passes the inputs to it as environment variables.
+
+The tests in `test/gate.bats` run `gate.sh` against a stub `gh` (`test/bin/gh`), so they make no network calls. Each test sets the API responses it needs. To run them, install [bats](https://github.com/bats-core/bats-core), `jq` and `shellcheck`, then run:
+
+```sh
+bats test/
+shellcheck gate.sh test/bin/gh
+shellcheck -s bash test/gate.bats
+```
+
+CI runs these checks and `actionlint` on every pull request. A smoke job also runs `action.yml` against pull requests from branches in this repo, in read-only mode. It skips PRs from bots, which have no repo role.

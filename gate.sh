@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# Decides if a slash command in a comment may run. action.yml sets the inputs as env vars.
+set -euo pipefail
+
+# Role ranks, highest first. Unknown roles rank 0.
+rank() {
+  case "$1" in
+    admin) echo 5 ;;
+    maintain) echo 4 ;;
+    write) echo 3 ;;
+    triage) echo 2 ;;
+    read) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# Fill the {placeholders} in a message. $1 is the template, $2 the reason.
+fill() {
+  local s=$1
+  s=${s//'{commenter}'/$COMMENTER}
+  s=${s//'{command}'/$COMMAND}
+  s=${s//'{role}'/$MIN_ROLE}
+  s=${s//'{reason}'/${2:-}}
+  printf '%s' "$s"
+}
+
+comment() {
+  gh api "repos/$REPO/issues/$ISSUE_NUMBER/comments" -f body="$1" --silent
+}
+
+if [ "$(rank "$MIN_ROLE")" -eq 0 ]; then
+  echo "::error::min_role must be one of admin, maintain, write, triage, read - got '$MIN_ROLE'."
+  exit 1
+fi
+
+# 1. The comment must start with the command. No API call needed.
+if [[ "$COMMENT_BODY" != "$COMMAND"* ]]; then
+  echo "::error::The comment does not start with $COMMAND."
+  exit 1
+fi
+
+# 2. The commenter must have at least the required role
+permission=$(gh api "repos/$REPO/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || echo none)
+echo "permission=$permission" >> "$GITHUB_OUTPUT"
+if [ "$(rank "$permission")" -lt "$(rank "$MIN_ROLE")" ]; then
+  comment "$(fill "$DENY_MESSAGE")"
+  echo "::error::$COMMENTER has '$permission' permission - $COMMAND needs $MIN_ROLE."
+  exit 1
+fi
+echo "✅ $COMMENTER has '$permission' permission."
+
+# 3. Optional: the comment must be on an open PR, from a branch in this repo
+if [ "$REQUIRE_PR" = "true" ] || [ "$REQUIRE_SAME_REPO" = "true" ]; then
+  if ! gh api "repos/$REPO/pulls/$ISSUE_NUMBER" >/dev/null 2>&1; then
+    echo "::error::$COMMAND only runs on pull requests - #$ISSUE_NUMBER is not one."
+    exit 1
+  fi
+  IFS=$'\t' read -r state head_ref head_sha head_repo < <(
+    gh api "repos/$REPO/pulls/$ISSUE_NUMBER" \
+      --jq '[.state, .head.ref, .head.sha, (.head.repo.full_name // "")] | @tsv'
+  )
+  if [ "$state" != "open" ]; then
+    echo "::error::PR #$ISSUE_NUMBER is not open (state: $state) - $COMMAND can't run."
+    exit 1
+  fi
+  if [ "$REQUIRE_SAME_REPO" = "true" ] && [ "$head_repo" != "$REPO" ]; then
+    if [ -z "$head_repo" ]; then reason="its fork was deleted"; else reason="it comes from the fork $head_repo"; fi
+    comment "$(fill "$REFUSE_MESSAGE" "$reason")"
+    echo "::error::$COMMAND refused: $reason. It only runs for branches in $REPO."
+    exit 1
+  fi
+  {
+    echo "head_ref=$head_ref"
+    echo "head_sha=$head_sha"
+    echo "head_repository=$head_repo"
+  } >> "$GITHUB_OUTPUT"
+fi
+
+# 4. Allowed. Acknowledge it. A missing reaction scope must not stop the command.
+if [ -n "$REACTION" ]; then
+  gh api "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content="$REACTION" --silent \
+    || echo "::warning::Could not add the reaction to the command."
+fi
+
+echo "✅ $COMMAND allowed for $COMMENTER on #$ISSUE_NUMBER"
