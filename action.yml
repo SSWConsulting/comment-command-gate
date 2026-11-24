@@ -1,5 +1,5 @@
 name: Comment command gate
-description: Mitigates GitHub Actions "pwn request" attacks on issue_comment slash commands such as /deploy. Stops a fork PR's code from running with repo secrets. Checks in order and stops at the first failure - the comment starts with the command, the commenter has at least the required repo role, and (optionally) the PR is open and its head branch is in this repo. Exits 0 if the command may run, 1 if not.
+description: Mitigates GitHub Actions "pwn request" attacks on issue_comment slash commands such as /deploy. Stops a fork PR's code from running with repo secrets. Checks in order and stops at the first failure - the comment starts with the command, the commenter has at least the required repo role, and, by default, that the comment is on an open PR whose head branch is in this repo. Exits 0 if the command may run, 1 if not.
 
 # The checks run cheapest first, so most refusals cost no API calls. The logic is in gate.sh.
 # Call it from a job triggered by issue_comment (created), and filter the
@@ -7,7 +7,7 @@ description: Mitigates GitHub Actions "pwn request" attacks on issue_comment sla
 
 inputs:
   token:
-    description: Token for gh, usually github.token. Needs issues write, and pull-requests write if the PR checks run.
+    description: Token for gh, usually github.token. Needs issues write, and pull-requests read if the PR checks run.
     required: true
   repository:
     description: The repo the comment is in, usually github.repository
@@ -28,7 +28,7 @@ inputs:
     description: The command the comment must start with, e.g. /deploy
     required: true
   min_role:
-    description: The lowest repo role allowed to run the command. One of admin, maintain, write, triage, read.
+    description: The lowest repo role allowed to run the command. One of admin, maintain, write, triage, read. On a public repo, every GitHub user has read.
     required: false
     default: write
   require_pull_request:
@@ -36,15 +36,15 @@ inputs:
     required: false
     default: "false"
   require_same_repo_branch:
-    description: "true to refuse PRs whose head branch is not in this repo, including PRs whose fork was deleted. Implies require_pull_request."
+    description: "true to refuse PRs whose head branch is not in this repo, including PRs whose fork was deleted. Implies require_pull_request. Set to false for a command that also runs on issues."
     required: false
-    default: "false"
+    default: "true"
   deny_message:
-    description: Comment posted when the commenter's role is too low. {commenter}, {command} and {role} are replaced.
+    description: Comment posted when the commenter's role is too low. {commenter}, {command} and {role} are replaced. Empty to post nothing.
     required: false
     default: "🛑 Sorry @{commenter} - `{command}` needs {role} access to this repo."
   refuse_message:
-    description: Comment posted when the PR is refused. {commenter}, {command} and {reason} are replaced.
+    description: Comment posted when the PR is refused. {commenter}, {command} and {reason} are replaced. Empty to post nothing.
     required: false
     default: "🛑 Sorry @{commenter} - `{command}` can't run on this PR because {reason}."
   reaction:

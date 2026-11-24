@@ -22,11 +22,11 @@ A composite GitHub Action that decides whether a slash command typed in an issue
 
 It checks, cheapest first, and stops at the first failure:
 
-1. the comment starts with the command;
+1. the comment starts with the command as a whole word, so `/deploy` does not match `/deploy-prod`;
 2. the commenter has at least `min_role` in the repo (default `write`);
-3. optional, for PR-only commands: the PR is open, and its head branch is in this repo (refuses forks and deleted forks).
+3. by default, the comment is on an open PR and the PR's head branch is in this repo (refuses forks and deleted forks). Set `require_same_repo_branch: "false"` to turn this off.
 
-It exits `0` if the command may run and `1` if not. A refusal posts a comment saying why. An allowed command gets a reaction (`+1` by default).
+It exits `0` if the command may run and `1` if not. A refusal posts a comment saying why, unless that message is set to empty. An allowed command gets a reaction (`+1` by default).
 
 It only calls the GitHub API, so a caller does not need `actions/checkout`.
 
@@ -43,13 +43,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      pull-requests: write
+      pull-requests: read
     outputs:
       head_ref: ${{ steps.gate.outputs.head_ref }}
       head_sha: ${{ steps.gate.outputs.head_sha }}
     steps:
       - id: gate
-        uses: SSWConsulting/comment-command-gate@v2.0.0
+        uses: SSWConsulting/comment-command-gate@v3.0.0
         with:
           token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -59,7 +59,6 @@ jobs:
           commenter: ${{ github.event.comment.user.login }}
           command: /deploy
           min_role: write
-          require_same_repo_branch: "true"
 
   deploy:
     needs: gate
@@ -68,11 +67,13 @@ jobs:
       - run: echo "Deploying ${{ needs.gate.outputs.head_sha }}"
 ```
 
-A command that only needs a role, and works on issues too, leaves out the PR options:
+The job's `if:` uses `startsWith` so that other comments do not start a runner. It also matches `/deploy-prod`, so the gate checks the whole word.
+
+A command that only needs a role, and works on issues too, turns the PR check off:
 
 ```yaml
 - id: gate
-  uses: SSWConsulting/comment-command-gate@v2.0.0
+  uses: SSWConsulting/comment-command-gate@v3.0.0
   with:
     token: ${{ github.token }}
     repository: ${{ github.repository }}
@@ -82,24 +83,25 @@ A command that only needs a role, and works on issues too, leaves out the PR opt
     commenter: ${{ github.event.comment.user.login }}
     command: /label
     min_role: triage
+    require_same_repo_branch: "false"
 ```
 
 ## Inputs
 
 | Input | Required | Default | Description |
 | --- | --- | --- | --- |
-| `token` | yes | | Token for `gh`, usually `github.token`. Needs `issues: write`, and `pull-requests: write` if the PR checks run. |
+| `token` | yes | | Token for `gh`, usually `github.token`. Needs `issues: write`, and `pull-requests: read` if the PR checks run. |
 | `repository` | yes | | `github.repository` |
 | `issue_number` | yes | | `github.event.issue.number` |
 | `comment_id` | yes | | `github.event.comment.id` |
 | `comment_body` | yes | | `github.event.comment.body` |
 | `commenter` | yes | | `github.event.comment.user.login` |
 | `command` | yes | | The text the comment must start with, e.g. `/deploy` |
-| `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read` |
+| `min_role` | no | `write` | Lowest repo role allowed: `admin`, `maintain`, `write`, `triage` or `read`. On a public repo, every GitHub user has `read`. |
 | `require_pull_request` | no | `false` | `"true"` to refuse unless the comment is on an open PR |
-| `require_same_repo_branch` | no | `false` | `"true"` to refuse PRs whose head branch is not in this repo. Implies `require_pull_request`. |
-| `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. |
-| `refuse_message` | no | see `action.yml` | Comment on a PR refusal. `{commenter}`, `{command}`, `{reason}` are replaced. |
+| `require_same_repo_branch` | no | `true` | `"true"` to refuse PRs whose head branch is not in this repo. Implies `require_pull_request`. Set to `"false"` for a command that also runs on issues. |
+| `deny_message` | no | see `action.yml` | Comment on a role refusal. `{commenter}`, `{command}`, `{role}` are replaced. Empty to post nothing. |
+| `refuse_message` | no | see `action.yml` | Comment on a PR refusal. `{commenter}`, `{command}`, `{reason}` are replaced. Empty to post nothing. |
 | `reaction` | no | `+1` | Reaction for an allowed command. Empty to skip. |
 
 ## Outputs
@@ -113,9 +115,9 @@ A command that only needs a role, and works on issues too, leaves out the PR opt
 
 ## Versioning
 
-Callers pin to a release tag (`@v2.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
+Callers pin to a release tag (`@v3.0.0`) or to a full commit SHA. Do not use `@main`: the action runs with each caller's token, so any change on `main` reaches every caller on its next run.
 
-Releases are tags of the form `vX.Y.Z`. A change to inputs or outputs that breaks existing callers gets a new major version. `v1.0.0` was the first release and was specific to `/deploy`; `v2.0.0` replaced it with the generic action above.
+Releases are tags of the form `vX.Y.Z`. A change to inputs or outputs that breaks existing callers gets a new major version. `v1.0.0` was the first release and was specific to `/deploy`; `v2.0.0` replaced it with the generic action above. `v3.0.0` turned on `require_same_repo_branch` by default, so a caller that leaves it out now refuses fork PRs and issues.
 
 ## Development
 
